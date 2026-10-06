@@ -1,0 +1,19 @@
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: pos
+      POSTGRES_PASSWORD: pos_pw
+      POSTGRES_DB: restaurant
+    ports:
+      - "5434:5432"
+    volumes:
+      - pos_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pos -d restaurant"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pos_pgdata:
