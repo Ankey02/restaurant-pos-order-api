@@ -14,6 +14,8 @@ public static class DependencyInjection
 
         services.AddScoped<IAppDbContext>(sp => sp.GetRequiredService<AppDbContext>());
 
+        services.AddScoped<RestaurantPos.Application.Reports.IReportQueries>(_ => new RestaurantPos.Infrastructure.Reports.ReportQueries(connectionString));
+
         return services;
     }
 }
