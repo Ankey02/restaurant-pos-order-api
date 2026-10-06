@@ -15,5 +15,16 @@ services:
       timeout: 5s
       retries: 10
 
+  api:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development   # enables the Scalar UI for demos
+      ConnectionStrings__Default: "Host=db;Port=5432;Database=restaurant;Username=pos;Password=pos_pw"
+    ports:
+      - "5090:8080"
+
 volumes:
   pos_pgdata:
