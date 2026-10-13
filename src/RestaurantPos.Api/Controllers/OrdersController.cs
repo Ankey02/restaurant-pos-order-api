@@ -5,7 +5,7 @@ namespace RestaurantPos.Api.Controllers;
 
 [ApiController]
 [Route("orders")]
-public class OrdersController(OrderCommands commands, OrderQueries queries) : ControllerBase
+public class OrdersController(OrderCommands commands, OrderQueries queries, IOrderHistoryQueries history) : ControllerBase
 {
     [HttpPost]
     public async Task<IActionResult> Open(OpenOrderRequest request, CancellationToken ct)
@@ -22,6 +22,11 @@ public class OrdersController(OrderCommands commands, OrderQueries queries) : Co
     [HttpGet]
     public async Task<List<OrderDto>> ListActive(CancellationToken ct) =>
         await queries.ListActiveAsync(ct);
+
+    // Status changes recorded by the SQL Server audit trigger, oldest first.
+    [HttpGet("{id:guid}/history")]
+    public async Task<IReadOnlyList<OrderStatusChangeDto>> History(Guid id, CancellationToken ct) =>
+        await history.GetAsync(id, ct);
 
     [HttpPost("{id:guid}/lines")]
     public async Task<OrderDto> AddLine(Guid id, AddLineRequest request, CancellationToken ct) =>

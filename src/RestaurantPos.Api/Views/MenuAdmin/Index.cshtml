@@ -1,0 +1,149 @@
+@using System.Globalization
+@model MenuAdminViewModel
+@{
+    ViewData["Title"] = "Menu";
+    static string Money(long cents) => (cents / 100m).ToString("0.00", CultureInfo.InvariantCulture);
+}
+
+<h1 class="h3 mb-3">Menu</h1>
+
+@if (TempData["Message"] is string message)
+{
+    <div class="alert alert-success">@message</div>
+}
+<div id="ajax-alert" class="alert d-none" role="status"></div>
+
+<div class="row g-4">
+    <div class="col-lg-4">
+        <div class="card">
+            <div class="card-body">
+                <h2 class="h5">Add an item</h2>
+                <form asp-action="Create" method="post" novalidate>
+                    <div asp-validation-summary="ModelOnly" class="text-danger small"></div>
+
+                    <div class="mb-2">
+                        <label asp-for="NewItem.Name" class="form-label"></label>
+                        <input asp-for="NewItem.Name" class="form-control" />
+                        <span asp-validation-for="NewItem.Name" class="text-danger small"></span>
+                    </div>
+                    <div class="mb-2">
+                        <label asp-for="NewItem.Category" class="form-label"></label>
+                        <input asp-for="NewItem.Category" class="form-control" />
+                        <span asp-validation-for="NewItem.Category" class="text-danger small"></span>
+                    </div>
+                    <div class="mb-3">
+                        <label asp-for="NewItem.Price" class="form-label"></label>
+                        <input asp-for="NewItem.Price" class="form-control" step="0.01" min="0.01" />
+                        <span asp-validation-for="NewItem.Price" class="text-danger small"></span>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Add item</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-8">
+        <input id="search" type="search" class="form-control mb-2" placeholder="Search name or category" />
+        <table id="menu-table" class="table table-sm align-middle bg-white">
+            <thead>
+                <tr><th>Name</th><th>Category</th><th style="width: 13rem">Price</th><th>Status</th><th></th></tr>
+            </thead>
+            <tbody>
+            @foreach (var item in Model.Items)
+            {
+                <tr data-id="@item.Id" data-available="@(item.IsAvailable ? "true" : "false")">
+                    <td>@item.Name</td>
+                    <td>@item.Category</td>
+                    <td>
+                        <div class="input-group input-group-sm">
+                            <input type="number" step="0.01" min="0.01" class="form-control js-price"
+                                   value="@Money(item.PriceCents)" aria-label="Price of @item.Name" />
+                            <button type="button" class="btn btn-outline-primary js-save-price">Save</button>
+                        </div>
+                    </td>
+                    <td><span class="badge js-status @(item.IsAvailable ? "bg-success" : "bg-secondary")">@(item.IsAvailable ? "Available" : "Unavailable")</span></td>
+                    <td><button type="button" class="btn btn-sm btn-outline-secondary js-toggle">@(item.IsAvailable ? "Mark unavailable" : "Mark available")</button></td>
+                </tr>
+            }
+            </tbody>
+        </table>
+        @if (Model.Items.Count == 0)
+        {
+            <p class="text-muted">No menu items yet. Add one on the left.</p>
+        }
+    </div>
+</div>
+
+@section Scripts {
+<script>
+    // jQuery: price changes and availability toggles call the REST API with AJAX,
+    // then update the row in place without reloading the page.
+    $(function () {
+        const $alert = $("#ajax-alert");
+
+        function showMessage(text, ok) {
+            $alert.removeClass("d-none alert-success alert-danger")
+                  .addClass(ok ? "alert-success" : "alert-danger")
+                  .text(text);
+        }
+
+        function showError(xhr) {
+            const problem = xhr.responseJSON; // ASP.NET Core ProblemDetails
+            showMessage((problem && (problem.detail || problem.title)) || ("Request failed (" + xhr.status + ")"), false);
+        }
+
+        function putJson(url, data) {
+            return $.ajax({
+                url: url,
+                method: "PUT",
+                contentType: "application/json",
+                dataType: "json",
+                data: JSON.stringify(data)
+            });
+        }
+
+        function showAvailability($row, isAvailable) {
+            $row.attr("data-available", isAvailable ? "true" : "false");
+            $row.find(".js-status")
+                .toggleClass("bg-success", isAvailable)
+                .toggleClass("bg-secondary", !isAvailable)
+                .text(isAvailable ? "Available" : "Unavailable");
+            $row.find(".js-toggle").text(isAvailable ? "Mark unavailable" : "Mark available");
+        }
+
+        $("#menu-table").on("click", ".js-save-price", function () {
+            const $row = $(this).closest("tr");
+            const value = parseFloat($row.find(".js-price").val());
+            if (isNaN(value) || value <= 0) {
+                showMessage("Enter a price greater than zero.", false);
+                return;
+            }
+            putJson("/menu/" + $row.data("id") + "/price", { priceCents: Math.round(value * 100) })
+                .done(function (item) {
+                    $row.find(".js-price").val((item.priceCents / 100).toFixed(2));
+                    showMessage("Price of " + item.name + " updated.", true);
+                })
+                .fail(showError);
+        });
+
+        $("#menu-table").on("click", ".js-toggle", function () {
+            const $row = $(this).closest("tr");
+            const isAvailable = $row.attr("data-available") === "true";
+            putJson("/menu/" + $row.data("id") + "/availability", { isAvailable: !isAvailable })
+                .done(function (item) {
+                    showAvailability($row, item.isAvailable);
+                    showMessage(item.name + " is now " + (item.isAvailable ? "available." : "unavailable."), true);
+                })
+                .fail(showError);
+        });
+
+        // Client-side filter as you type.
+        $("#search").on("input", function () {
+            const query = $(this).val().toLowerCase();
+            $("#menu-table tbody tr").each(function () {
+                $(this).toggle($(this).children("td").slice(0, 2).text().toLowerCase().includes(query));
+            });
+        });
+    });
+</script>
+}

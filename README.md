@@ -10,8 +10,10 @@ A REST API for a restaurant point-of-sale: menu, table orders, kitchen hand-off,
 - **Orders**: open an order for a table, add/remove lines, apply a discount, send to kitchen, pay, cancel
 - **Payment**: card must match the total; cash must cover it and the change is calculated
 - **Reports** (T-SQL): daily sales with running total (stored procedure `dbo.usp_daily_sales`), top-selling items ranked by revenue, sales by hour with share of total
+- **Order audit trail**: a SQL Server **trigger** (`trg_orders_status_audit`) logs every status change; `GET /orders/{id}/history` returns it
+- **MVC admin page** (`/admin/menu`): ASP.NET MVC with Razor views, model validation and anti-forgery; **jQuery AJAX** for price changes and availability toggles
 - **Clear errors**: RFC 7807 `ProblemDetails` with proper status codes (404, 409, 422, 500)
-- **45 automated tests**, including integration tests against a real SQL Server (Testcontainers)
+- **52 automated tests**, including integration tests against a real SQL Server (Testcontainers)
 
 ## Architecture
 
@@ -37,6 +39,7 @@ flowchart LR
 docker compose up -d --build
 ```
 
+- Menu admin (ASP.NET MVC + jQuery): http://localhost:5090/admin/menu
 - API + Swagger-style UI (Scalar): http://localhost:5090/scalar/v1
 - Health check: http://localhost:5090/health
 - SQL Server is exposed on port 1434 (user `sa`, password `Pos_Strong_Pw1!`, local demo only); connect with SSMS or Azure Data Studio using server `localhost,1434`
@@ -72,6 +75,8 @@ Then try, for India time: `GET /reports/daily-sales?utcOffsetMinutes=330`
 | GET | `/reports/daily-sales` | Orders, gross, discount, tax, total, average, running total per day |
 | GET | `/reports/top-items` | Items ranked by revenue (`RANK()`), with percentage share |
 | GET | `/reports/sales-by-hour` | Sales per hour of day with share of total |
+| GET | `/orders/{id}/history` | Status changes recorded by the audit trigger |
+| GET / POST | `/admin/menu` | MVC admin page (HTML): list and add menu items |
 
 Reports take `fromDate`, `toDate` (default: last 30 days) and `utcOffsetMinutes` (for example `330` for India) so sales fall into the restaurant's local day and hour.
 
@@ -84,6 +89,8 @@ Reports take `fromDate`, `toDate` (default: last 30 days) and `utcOffsetMinutes`
 - **Business rules live in the domain**: you can't pay an empty order, add items after it was sent, or pay less than the total in cash. These return **422**.
 - **Hand-written T-SQL for reports**: aggregates with window functions (`RANK() OVER`, running `SUM() OVER`, share of total) are clearer and faster as SQL than as LINQ. The daily report is a **stored procedure** created by an EF Core migration; the other two are parameterised queries.
 - **UTC everywhere**: times are stored in `datetime2` as UTC, and a value converter marks them as UTC again when read.
+- **Audit trigger in the database**: `AFTER INSERT, UPDATE` on `orders`, set-based on the `inserted` / `deleted` tables, so the history is complete even for changes made outside the API (scripts, SSMS). The table is declared with `HasTrigger` so EF Core saves without an `OUTPUT` clause, which SQL Server does not allow on tables with triggers.
+- **MVC next to the API**: the admin page uses the same Application layer (`MenuCommands`, `MenuQueries`) as the REST controllers. Adding an item is a server-side form post (validation, anti-forgery token, Post/Redirect/Get); price and availability changes call the REST API with jQuery `$.ajax` and update the row without a reload.
 - `TimeProvider` is injected, so time-dependent logic can be tested.
 
 ## Tests
@@ -92,10 +99,10 @@ Reports take `fromDate`, `toDate` (default: last 30 days) and `utcOffsetMinutes`
 dotnet test
 ```
 
-45 tests (Docker must be running for the integration tests):
+52 tests (Docker must be running for the integration tests):
 
 - **32 unit tests** for the domain: totals, rounding, discount, payment, state rules
-- **13 integration tests** that start a real SQL Server 2022 in Docker (Testcontainers) and call the API: the full open, add, send, pay flow, the 404 / 409 / 422 error cases, table reuse after payment, and the three reports checked against **hand-calculated numbers**, including the UTC offset moving a sale into the next local day
+- **20 integration tests** that start a real SQL Server 2022 in Docker (Testcontainers) and call the API: the full open, add, send, pay flow, the 404 / 409 / 422 error cases, table reuse after payment, and the three reports checked against **hand-calculated numbers**, including the UTC offset moving a sale into the next local day, the audit trigger history, and the MVC page (list, valid and invalid form posts, missing anti-forgery token)
 
 ## PostgreSQL vs SQL Server: what changed
 
@@ -116,7 +123,7 @@ src/
   RestaurantPos.Domain          entities and business rules
   RestaurantPos.Application     use cases, DTOs, interfaces
   RestaurantPos.Infrastructure  EF Core, migrations (incl. stored procedure), Dapper reports
-  RestaurantPos.Api             controllers, error handling, Program.cs
+  RestaurantPos.Api             API + MVC controllers, Razor views, error handling, Program.cs
 tests/RestaurantPos.Tests       unit + integration tests
 scripts/seed-demo-data.sql      synthetic demo data
 ```

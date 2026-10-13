@@ -8,7 +8,9 @@ public class OrderConfiguration : IEntityTypeConfiguration<Order>
 {
     public void Configure(EntityTypeBuilder<Order> b)
     {
-        b.ToTable("orders");
+        // The audit trigger is declared so EF Core saves without an OUTPUT clause
+        // (SQL Server does not allow OUTPUT on tables that have triggers).
+        b.ToTable("orders", t => t.HasTrigger("trg_orders_status_audit"));
         b.HasKey(x => x.Id);
 
         // The Id is created in code (Guid.NewGuid), so EF must not try to generate it.

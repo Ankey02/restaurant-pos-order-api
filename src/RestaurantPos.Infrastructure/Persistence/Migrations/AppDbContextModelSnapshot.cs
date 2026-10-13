@@ -141,7 +141,10 @@ namespace RestaurantPos.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("ix_orders_table_number")
                         .HasFilter("[status] IN (N'Open', N'SentToKitchen')");
 
-                    b.ToTable("orders", (string)null);
+                    b.ToTable("orders", null, t =>
+                        {
+                            t.HasTrigger("trg_orders_status_audit");
+                        });
                 });
 
             modelBuilder.Entity("RestaurantPos.Domain.Orders.OrderLine", b =>
