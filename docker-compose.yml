@@ -1,19 +1,21 @@
 services:
   db:
-    image: postgres:16
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    platform: linux/amd64          # runs on Apple Silicon too (Docker Desktop uses Rosetta)
     environment:
-      POSTGRES_USER: pos
-      POSTGRES_PASSWORD: pos_pw
-      POSTGRES_DB: restaurant
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "Pos_Strong_Pw1!"   # local demo only
+      MSSQL_PID: "Developer"
     ports:
-      - "5434:5432"
+      - "1434:1433"
     volumes:
-      - pos_pgdata:/var/lib/postgresql/data
+      - pos_mssqldata:/var/opt/mssql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U pos -d restaurant"]
-      interval: 5s
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P \"$$MSSQL_SA_PASSWORD\" -C -Q \"SELECT 1\" || exit 1"]
+      interval: 10s
       timeout: 5s
-      retries: 10
+      retries: 12
+      start_period: 20s
 
   api:
     build: .
@@ -22,9 +24,9 @@ services:
         condition: service_healthy
     environment:
       ASPNETCORE_ENVIRONMENT: Development   # enables the Scalar UI for demos
-      ConnectionStrings__Default: "Host=db;Port=5432;Database=restaurant;Username=pos;Password=pos_pw"
+      ConnectionStrings__Default: "Server=db,1433;Database=restaurant;User Id=sa;Password=Pos_Strong_Pw1!;TrustServerCertificate=True"
     ports:
       - "5090:8080"
 
 volumes:
-  pos_pgdata:
+  pos_mssqldata:

@@ -4,7 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
-using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
+using Microsoft.EntityFrameworkCore.Metadata;
 using RestaurantPos.Infrastructure.Persistence;
 
 #nullable disable
@@ -21,34 +21,34 @@ namespace RestaurantPos.Infrastructure.Persistence.Migrations
 #pragma warning disable 612, 618
             modelBuilder
                 .HasAnnotation("ProductVersion", "9.0.1")
-                .HasAnnotation("Relational:MaxIdentifierLength", 63);
+                .HasAnnotation("Relational:MaxIdentifierLength", 128);
 
-            NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
+            SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
             modelBuilder.Entity("RestaurantPos.Domain.MenuItems.MenuItem", b =>
                 {
                     b.Property<Guid>("Id")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<string>("Category")
                         .IsRequired()
                         .HasMaxLength(60)
-                        .HasColumnType("character varying(60)")
+                        .HasColumnType("nvarchar(60)")
                         .HasColumnName("category");
 
                     b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetime2")
                         .HasColumnName("created_at");
 
                     b.Property<bool>("IsAvailable")
-                        .HasColumnType("boolean")
+                        .HasColumnType("bit")
                         .HasColumnName("is_available");
 
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(120)
-                        .HasColumnType("character varying(120)")
+                        .HasColumnType("nvarchar(120)")
                         .HasColumnName("name");
 
                     b.Property<long>("PriceCents")
@@ -68,16 +68,16 @@ namespace RestaurantPos.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("RestaurantPos.Domain.Orders.Order", b =>
                 {
                     b.Property<Guid>("Id")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<string>("CancelReason")
                         .HasMaxLength(200)
-                        .HasColumnType("character varying(200)")
+                        .HasColumnType("nvarchar(200)")
                         .HasColumnName("cancel_reason");
 
                     b.Property<DateTime?>("CancelledAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetime2")
                         .HasColumnName("cancelled_at");
 
                     b.Property<long?>("ChangeCents")
@@ -85,49 +85,50 @@ namespace RestaurantPos.Infrastructure.Persistence.Migrations
                         .HasColumnName("change_cents");
 
                     b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetime2")
                         .HasColumnName("created_at");
 
                     b.Property<int>("DiscountPercent")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("discount_percent");
 
                     b.Property<DateTime?>("PaidAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetime2")
                         .HasColumnName("paid_at");
 
                     b.Property<string>("PaidWith")
                         .HasMaxLength(10)
-                        .HasColumnType("character varying(10)")
+                        .HasColumnType("nvarchar(10)")
                         .HasColumnName("paid_with");
 
                     b.Property<DateTime?>("SentAt")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("datetime2")
                         .HasColumnName("sent_at");
 
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasColumnType("nvarchar(20)")
                         .HasColumnName("status");
 
                     b.Property<int>("TableNumber")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("table_number");
 
                     b.Property<int>("TaxRateBasisPoints")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("tax_rate_basis_points");
 
                     b.Property<long?>("TenderedCents")
                         .HasColumnType("bigint")
                         .HasColumnName("tendered_cents");
 
-                    b.Property<uint>("xmin")
+                    b.Property<byte[]>("RowVersion")
                         .IsConcurrencyToken()
+                        .IsRequired()
                         .ValueGeneratedOnAddOrUpdate()
-                        .HasColumnType("xid")
-                        .HasColumnName("xmin");
+                        .HasColumnType("rowversion")
+                        .HasColumnName("row_version");
 
                     b.HasKey("Id")
                         .HasName("pk_orders");
@@ -141,7 +142,7 @@ namespace RestaurantPos.Infrastructure.Persistence.Migrations
                     b.HasIndex("TableNumber")
                         .IsUnique()
                         .HasDatabaseName("ix_orders_table_number")
-                        .HasFilter("status IN ('Open', 'SentToKitchen')");
+                        .HasFilter("[status] IN (N'Open', N'SentToKitchen')");
 
                     b.ToTable("orders", (string)null);
                 });
@@ -149,25 +150,25 @@ namespace RestaurantPos.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("RestaurantPos.Domain.Orders.OrderLine", b =>
                 {
                     b.Property<Guid>("Id")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
                     b.Property<string>("ItemName")
                         .IsRequired()
                         .HasMaxLength(120)
-                        .HasColumnType("character varying(120)")
+                        .HasColumnType("nvarchar(120)")
                         .HasColumnName("item_name");
 
                     b.Property<Guid>("MenuItemId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("menu_item_id");
 
                     b.Property<Guid>("OrderId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("uniqueidentifier")
                         .HasColumnName("order_id");
 
                     b.Property<int>("Quantity")
-                        .HasColumnType("integer")
+                        .HasColumnType("int")
                         .HasColumnName("quantity");
 
                     b.Property<long>("UnitPriceCents")

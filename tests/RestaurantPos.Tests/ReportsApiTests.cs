@@ -1,6 +1,6 @@
 using System.Net;
 using System.Text.Json;
-using Npgsql;
+using Microsoft.Data.SqlClient;
 using Xunit;
 
 namespace RestaurantPos.Tests;
@@ -41,35 +41,35 @@ public class ReportsApiTests(PosApiFactory factory)
     private async Task InsertPaidOrderAsync(string paidAtUtc, int discountPercent,
         params (string Name, long Price, int Qty)[] lines)
     {
-        await using var conn = new NpgsqlConnection(factory.ConnectionString);
+        await using var conn = new SqlConnection(factory.ConnectionString);
         await conn.OpenAsync();
         var orderId = Guid.NewGuid();
-        var paidAt = DateTimeOffset.Parse(paidAtUtc);
+        var paidAt = DateTimeOffset.Parse(paidAtUtc).UtcDateTime;
 
-        await using (var cmd = new NpgsqlCommand("""
+        await using (var cmd = new SqlCommand("""
             INSERT INTO orders (id, table_number, status, tax_rate_basis_points, discount_percent,
                                 created_at, paid_at, paid_with, tendered_cents, change_cents)
-            VALUES (@id, 1, 'Paid', 500, @disc, @paid, @paid, 'Card', 0, 0)
+            VALUES (@id, 1, N'Paid', 500, @disc, @paid, @paid, N'Card', 0, 0)
             """, conn))
         {
-            cmd.Parameters.AddWithValue("id", orderId);
-            cmd.Parameters.AddWithValue("disc", discountPercent);
-            cmd.Parameters.AddWithValue("paid", paidAt);
+            cmd.Parameters.AddWithValue("@id", orderId);
+            cmd.Parameters.AddWithValue("@disc", discountPercent);
+            cmd.Parameters.AddWithValue("@paid", paidAt);
             await cmd.ExecuteNonQueryAsync();
         }
 
         foreach (var (name, price, qty) in lines)
         {
-            await using var cmd = new NpgsqlCommand("""
+            await using var cmd = new SqlCommand("""
                 INSERT INTO order_lines (id, order_id, menu_item_id, item_name, unit_price_cents, quantity)
                 VALUES (@id, @order, @item, @name, @price, @qty)
                 """, conn);
-            cmd.Parameters.AddWithValue("id", Guid.NewGuid());
-            cmd.Parameters.AddWithValue("order", orderId);
-            cmd.Parameters.AddWithValue("item", Guid.NewGuid());
-            cmd.Parameters.AddWithValue("name", name);
-            cmd.Parameters.AddWithValue("price", price);
-            cmd.Parameters.AddWithValue("qty", qty);
+            cmd.Parameters.AddWithValue("@id", Guid.NewGuid());
+            cmd.Parameters.AddWithValue("@order", orderId);
+            cmd.Parameters.AddWithValue("@item", Guid.NewGuid());
+            cmd.Parameters.AddWithValue("@name", name);
+            cmd.Parameters.AddWithValue("@price", price);
+            cmd.Parameters.AddWithValue("@qty", qty);
             await cmd.ExecuteNonQueryAsync();
         }
     }

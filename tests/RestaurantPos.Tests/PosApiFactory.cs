@@ -1,19 +1,25 @@
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
-using Testcontainers.PostgreSql;
+using Microsoft.Data.SqlClient;
+using Testcontainers.MsSql;
 using Xunit;
 
 namespace RestaurantPos.Tests;
 
-// Starts a throw-away PostgreSQL container, then runs the real API against it.
+// Starts a throw-away SQL Server container, then runs the real API against it.
 // The app applies its own migrations on startup, so the schema is the real one.
 public class PosApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
 {
-    private readonly PostgreSqlContainer _db = new PostgreSqlBuilder()
-        .WithImage("postgres:16")
+    private readonly MsSqlContainer _db = new MsSqlBuilder()
+        .WithImage("mcr.microsoft.com/mssql/server:2022-latest")
         .Build();
 
-    public string ConnectionString => _db.GetConnectionString();
+    // Use a dedicated database instead of "master"; EF creates it when migrating.
+    public string ConnectionString => new SqlConnectionStringBuilder(_db.GetConnectionString())
+    {
+        InitialCatalog = "restaurant_tests",
+        TrustServerCertificate = true
+    }.ConnectionString;
 
     public Task InitializeAsync() => _db.StartAsync();
 

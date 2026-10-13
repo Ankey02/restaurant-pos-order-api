@@ -19,8 +19,9 @@ public class OrderConfiguration : IEntityTypeConfiguration<Order>
         b.Property(x => x.PaidWith).HasConversion<string>().HasMaxLength(10);
         b.Property(x => x.CancelReason).HasMaxLength(200);
 
-        // PostgreSQL's built-in row version. Two people changing one order at once: the second one is rejected.
-        b.Property<uint>("xmin").IsRowVersion();
+        // SQL Server rowversion column: the database changes it on every update.
+        // Two people changing one order at once: the second one is rejected (409).
+        b.Property<byte[]>("RowVersion").IsRowVersion().IsRequired();
 
         b.HasMany(x => x.Lines)
             .WithOne()
@@ -28,10 +29,11 @@ public class OrderConfiguration : IEntityTypeConfiguration<Order>
             .OnDelete(DeleteBehavior.Cascade);
         b.Navigation(x => x.Lines).UsePropertyAccessMode(PropertyAccessMode.Field);
 
-        // A table can have only ONE active order. The database enforces this, not just the code.
+        // A table can have only ONE active order. The database enforces this, not just the code
+        // (a SQL Server filtered unique index).
         b.HasIndex(x => x.TableNumber)
             .IsUnique()
-            .HasFilter("status IN ('Open', 'SentToKitchen')");
+            .HasFilter("[status] IN (N'Open', N'SentToKitchen')");
 
         b.HasIndex(x => x.CreatedAt);
         b.HasIndex(x => x.PaidAt);

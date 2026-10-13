@@ -1,15 +1,17 @@
 # Restaurant POS & Order Management API
 
-A REST API for a restaurant point-of-sale: menu, table orders, kitchen hand-off, payment (cash/card, tax, discount, change) and sales reports. Built with **C# / .NET 9**, **PostgreSQL** and **EF Core**, with hand-written **SQL reports (window functions + CTEs)** through Dapper.
+A REST API for a restaurant point-of-sale: menu, table orders, kitchen hand-off, payment (cash/card, tax, discount, change) and sales reports. Built with **C# / .NET 9**, **Microsoft SQL Server** and **EF Core**, with hand-written **T-SQL reports (window functions, CTEs and a stored procedure)** through Dapper.
+
+> This is the `sql-server` branch. The original PostgreSQL version is on `main`, so the same system runs on both databases.
 
 ## Features
 
 - **Menu**: create items, change price, mark available/unavailable, filter by category
 - **Orders**: open an order for a table, add/remove lines, apply a discount, send to kitchen, pay, cancel
 - **Payment**: card must match the total; cash must cover it and the change is calculated
-- **Reports** (SQL): daily sales with running total, top-selling items ranked by revenue, sales by hour with share of total
+- **Reports** (T-SQL): daily sales with running total (stored procedure `dbo.usp_daily_sales`), top-selling items ranked by revenue, sales by hour with share of total
 - **Clear errors**: RFC 7807 `ProblemDetails` with proper status codes (404, 409, 422, 500)
-- **45 automated tests**, including integration tests against a real PostgreSQL (Testcontainers)
+- **45 automated tests**, including integration tests against a real SQL Server (Testcontainers)
 
 ## Architecture
 
@@ -23,7 +25,7 @@ flowchart LR
         App --> Dom[Domain<br/>Order, MenuItem, rules]
         Infra[Infrastructure<br/>EF Core, Dapper reports] --> App
     end
-    Infra --> DB[(PostgreSQL)]
+    Infra --> DB[(SQL Server)]
 ```
 
 - **Commands** (write side) go through EF Core and the domain model, so every rule is enforced in one place (`Order`).
@@ -37,14 +39,16 @@ docker compose up -d --build
 
 - API + Swagger-style UI (Scalar): http://localhost:5090/scalar/v1
 - Health check: http://localhost:5090/health
-- PostgreSQL is exposed on port 5434 (user `pos`, password `pos_pw`, local demo only)
+- SQL Server is exposed on port 1434 (user `sa`, password `Pos_Strong_Pw1!`, local demo only); connect with SSMS or Azure Data Studio using server `localhost,1434`
+- On Apple Silicon Macs, turn on "Use Rosetta for x86/amd64 emulation" in Docker Desktop settings (the SQL Server image is x86 only)
 
 The app applies its database migrations automatically on startup.
 
 Optional: add synthetic demo sales so the reports have data (about 300 made-up paid orders over 14 days):
 
 ```bash
-docker compose exec -T db psql -U pos -d restaurant < scripts/seed-demo-data.sql
+docker compose cp scripts/seed-demo-data.sql db:/tmp/seed.sql
+docker compose exec db /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "Pos_Strong_Pw1!" -C -d restaurant -i /tmp/seed.sql
 ```
 
 Then try, for India time: `GET /reports/daily-sales?utcOffsetMinutes=330`
@@ -74,11 +78,12 @@ Reports take `fromDate`, `toDate` (default: last 30 days) and `utcOffsetMinutes`
 ## Design decisions
 
 - **Money is integer cents** (`long`), tax in **basis points** (500 = 5%). Rounding is half-up using integer maths only, so there are no floating-point errors. The SQL reports use the same formulas as the C# code, and the tests check that they agree.
-- **One active order per table** is enforced by the database with a **partial unique index** (`status IN ('Open','SentToKitchen')`), not only in code, so two waiters can't open the same table at the same time.
-- **Optimistic concurrency** with PostgreSQL's `xmin`: if two people change the same order at once, the second gets a **409** instead of silently overwriting.
+- **One active order per table** is enforced by the database with a **filtered unique index** (`[status] IN (N'Open', N'SentToKitchen')`), not only in code, so two waiters can't open the same table at the same time.
+- **Optimistic concurrency** with a SQL Server `rowversion` column: if two people change the same order at once, the second gets a **409** instead of silently overwriting.
 - **Price snapshot**: an order line stores the item name and price at the time of sale, so changing the menu later never alters old orders or reports.
 - **Business rules live in the domain**: you can't pay an empty order, add items after it was sent, or pay less than the total in cash. These return **422**.
-- **Hand-written SQL for reports**: aggregates with window functions (`RANK() OVER`, running `SUM() OVER`, share of total) are clearer and faster as SQL than as LINQ.
+- **Hand-written T-SQL for reports**: aggregates with window functions (`RANK() OVER`, running `SUM() OVER`, share of total) are clearer and faster as SQL than as LINQ. The daily report is a **stored procedure** created by an EF Core migration; the other two are parameterised queries.
+- **UTC everywhere**: times are stored in `datetime2` as UTC, and a value converter marks them as UTC again when read.
 - `TimeProvider` is injected, so time-dependent logic can be tested.
 
 ## Tests
@@ -90,7 +95,19 @@ dotnet test
 45 tests (Docker must be running for the integration tests):
 
 - **32 unit tests** for the domain: totals, rounding, discount, payment, state rules
-- **13 integration tests** that start a real PostgreSQL 16 in Docker (Testcontainers) and call the API: the full open, add, send, pay flow, the 404 / 409 / 422 error cases, table reuse after payment, and the three reports checked against **hand-calculated numbers**, including the UTC offset moving a sale into the next local day
+- **13 integration tests** that start a real SQL Server 2022 in Docker (Testcontainers) and call the API: the full open, add, send, pay flow, the 404 / 409 / 422 error cases, table reuse after payment, and the three reports checked against **hand-calculated numbers**, including the UTC offset moving a sale into the next local day
+
+## PostgreSQL vs SQL Server: what changed
+
+| | PostgreSQL (`main`) | SQL Server (`sql-server`) |
+|---|---|---|
+| EF Core provider | `UseNpgsql` | `UseSqlServer` |
+| Concurrency token | `xmin` system column | `rowversion` column |
+| One active order per table | partial unique index | filtered unique index |
+| Local time in reports | `AT TIME ZONE` + `make_interval` | `DATEADD(MINUTE, @offset, ...)` |
+| Limiting rows | `LIMIT` | `TOP (@limit)` |
+| Daily report | inline query | stored procedure |
+| Test database | Testcontainers.PostgreSql | Testcontainers.MsSql |
 
 ## Project layout
 
@@ -98,7 +115,7 @@ dotnet test
 src/
   RestaurantPos.Domain          entities and business rules
   RestaurantPos.Application     use cases, DTOs, interfaces
-  RestaurantPos.Infrastructure  EF Core, migrations, Dapper reports
+  RestaurantPos.Infrastructure  EF Core, migrations (incl. stored procedure), Dapper reports
   RestaurantPos.Api             controllers, error handling, Program.cs
 tests/RestaurantPos.Tests       unit + integration tests
 scripts/seed-demo-data.sql      synthetic demo data
